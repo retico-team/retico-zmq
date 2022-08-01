@@ -84,12 +84,13 @@ class ZeroMQReader(abstract.AbstractProducingModule):
         self.topic = topic
         self.reader = None
 
-    def process_iu(self, input_iu):
+    def process_update(self, input_iu):
         '''
         This assumes that the message is json formatted, then packages it as payload into an IU
         '''
         [topic, message] = self.reader.recv_multipart()
         j = json.loads(message)
+        print(j)
         output_iu = self.create_iu()
         if 'image' in j:
             '''
@@ -102,12 +103,13 @@ class ZeroMQReader(abstract.AbstractProducingModule):
             output_iu.set_payload(payload)
         else:
             output_iu.set_payload(j)
-
-        if j["update_type"].upper() == "ADD":
+        if "update_type" not in j:
+            print("Incoming IU has no update_type!")
+        if j["update_type"] == "UpdateType.ADD":
             output_iu = abstract.UpdateMessage.from_iu(output_iu, abstract.UpdateType.ADD)
-        elif payload["update_type"].upper() == "REVOKE":
+        elif j["update_type"] == "UpdateType.REVOKE":
             output_iu = abstract.UpdateMessage.from_iu(output_iu, abstract.UpdateType.REVOKE)    
-        elif payload["update_type"].upper() == "COMMIT":
+        elif j["update_type"] == "UpdateType.COMMIT":
             output_iu = abstract.UpdateMessage.from_iu(output_iu, abstract.UpdateType.COMMIT)        
 
         return output_iu
@@ -157,7 +159,7 @@ class ZeroMQWriter(abstract.AbstractModule):
         self.writer = None
         
 
-    def process_update(self, input_iu):
+    def process_update(self, update_message):
         '''
         This assumes that the message is json formatted, then packages it as payload into an IU
         '''
@@ -177,11 +179,11 @@ class ZeroMQWriter(abstract.AbstractModule):
             payload['originatingTime'] = datetime.datetime.now().isoformat()
             
             # print(input_iu.payload)
-            if isinstance(input_iu, ImageIU) or isinstance(input_iu, DetectedObjectsIU)  or isinstance(input_iu, ObjectFeaturesIU):
-                payload['message'] = json.dumps(input_iu.get_json())
-            else:
-                payload['message'] = json.dumps(input_iu.payload)
-            payload['update_type'] = ut
+            # if isinstance(input_iu, ImageIU) or isinstance(input_iu, DetectedObjectsIU)  or isinstance(input_iu, ObjectFeaturesIU):
+                # payload['message'] = json.dumps(input_iu.get_json())
+            # else:
+            payload['message'] = json.dumps(input_iu.payload)
+            payload['update_type'] = str(ut)
 
             self.writer.send_multipart([self.topic, json.dumps(payload).encode('utf-8')])
 

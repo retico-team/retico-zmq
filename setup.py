@@ -20,7 +20,7 @@ config = {
     "download_url": "??",
     "author_email": "caseykennington@boisestate.edu",
     "version": "0.1",
-    "install_requires": ["retico-core~=0.2.0"],
+    "install_requires": ["retico-core~=0.2.0", "zmq"],
     "packages": find_packages(),
     "name": "retico-zmq",
 }
