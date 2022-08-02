@@ -1,5 +1,5 @@
 # retico
-from retico_core import abstract
+from retico_core import *
 
 # zeromq & supporting libraries
 import zmq, json
@@ -90,7 +90,6 @@ class ZeroMQReader(abstract.AbstractProducingModule):
         '''
         [topic, message] = self.reader.recv_multipart()
         j = json.loads(message)
-        print(j)
         output_iu = self.create_iu()
         if 'image' in j:
             '''
@@ -103,16 +102,19 @@ class ZeroMQReader(abstract.AbstractProducingModule):
             output_iu.set_payload(payload)
         else:
             output_iu.set_payload(j)
+        
+        update_message = UpdateMessage()
+
         if "update_type" not in j:
             print("Incoming IU has no update_type!")
         if j["update_type"] == "UpdateType.ADD":
-            output_iu = abstract.UpdateMessage.from_iu(output_iu, abstract.UpdateType.ADD)
+            update_message.add_iu(output_iu, abstract.UpdateType.ADD)
         elif j["update_type"] == "UpdateType.REVOKE":
-            output_iu = abstract.UpdateMessage.from_iu(output_iu, abstract.UpdateType.REVOKE)    
+            update_message.add_iu(output_iu, abstract.UpdateType.REVOKE)
         elif j["update_type"] == "UpdateType.COMMIT":
-            output_iu = abstract.UpdateMessage.from_iu(output_iu, abstract.UpdateType.COMMIT)        
-
-        return output_iu
+            update_message.add_iu(output_iu, abstract.UpdateType.COMMIT)
+        
+        return update_message
 
 
     def prepare_run(self):
