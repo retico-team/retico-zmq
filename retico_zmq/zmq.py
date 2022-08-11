@@ -56,7 +56,7 @@ class WriterSingleton:
             WriterSingleton.__instance = self
 
 
-class ZeroMQIU(IncrementalUnit):
+class ZeroMQIU(retico_core.IncrementalUnit):
     @staticmethod
     def type():
         return "ZeroMQ Incremental Unit"
