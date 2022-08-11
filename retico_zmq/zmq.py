@@ -1,5 +1,14 @@
+"""
+ZeroMQ Module
+=============
+
+This module defines two incremental modules ZeroMQReader and ZeroMQWriter that act as a
+a bridge between ZeroMQ and retico. For this, a ZeroMQIU is defined that contains the
+information revceived over the ZeroMQ bridge.
+"""
+
 # retico
-from retico_core import *
+import retico_core
 
 # zeromq & supporting libraries
 import zmq, json
@@ -8,60 +17,85 @@ import datetime
 import time
 from collections import deque
 
+# TODO: Check if these imports are needed for the Image conversion. If so, we would need
+#       to add numpy and PIL as requirements in the setup.py
+# import numpy as np
+# from PIL import Image
+
+
 class ReaderSingleton:
     __instance = None
-    @staticmethod 
+
+    @staticmethod
     def getInstance():
-        """ Static access method. """
+        """Static access method."""
         return ReaderSingleton.__instance
+
     def __init__(self, ip, port):
-        """ Virtually private constructor. """
+        """Virtually private constructor."""
         if ReaderSingleton.__instance == None:
             self.socket = zmq.Context().socket(zmq.SUB)
             self.socket.connect("tcp://{}:{}".format(ip, port))
             ReaderSingleton.__instance = self
 
+
 class WriterSingleton:
     __instance = None
-    @staticmethod 
+
+    @staticmethod
     def getInstance():
-        """ Static access method. """
+        """Static access method."""
         return WriterSingleton.__instance
+
     def __init__(self, ip, port):
-        """ Virtually private constructor. """
+        """Virtually private constructor."""
         if WriterSingleton.__instance == None:
             context = zmq.Context()
             self.socket = context.socket(zmq.PUB)
             self.socket.bind("tcp://{}:{}".format(ip, port))
             WriterSingleton.__instance = self
 
-class ZeroMQIU(abstract.IncrementalUnit):
 
+class ZeroMQIU(IncrementalUnit):
     @staticmethod
     def type():
         return "ZeroMQ Incremental Unit"
 
-    def __init__(self, creator=None, iuid=0, previous_iu=None, grounded_in=None,
-                 payload=None, **kwargs):
+    def __init__(
+        self,
+        creator=None,
+        iuid=0,
+        previous_iu=None,
+        grounded_in=None,
+        payload=None,
+        **kwargs
+    ):
         """Initialize the DialogueActIU with act and concepts.
 
         Args:
             act (string): A representation of the act.
             concepts (dict): A representation of the concepts as a dictionary.
         """
-        super().__init__(creator=creator, iuid=iuid, previous_iu=previous_iu,
-                         grounded_in=grounded_in, payload=payload)
+        super().__init__(
+            creator=creator,
+            iuid=iuid,
+            previous_iu=previous_iu,
+            grounded_in=grounded_in,
+            payload=payload,
+        )
 
     def set_payload(self, payload):
         self.payload = payload
-        
-class ZeroMQReader(abstract.AbstractProducingModule):
+
+
+class ZeroMQReader(retico_core.AbstractProducingModule):
 
     """A ZeroMQ Reader Module
 
     Attributes:
-        
+
     """
+
     @staticmethod
     def name():
         return "ZeroMQ Reader Module"
@@ -72,50 +106,54 @@ class ZeroMQReader(abstract.AbstractProducingModule):
 
     @staticmethod
     def output_iu():
-        return ZeroMQIU 
+        return ZeroMQIU
 
-    def __init__(self, topic,  **kwargs):
+    def __init__(self, topic, **kwargs):
         """Initializes the ZeroMQReader.
 
         Args: topic(str): the topic/scope where the information will be read.
-            
+
         """
         super().__init__(**kwargs)
         self.topic = topic
         self.reader = None
 
     def process_update(self, input_iu):
-        '''
+        """
         This assumes that the message is json formatted, then packages it as payload into an IU
-        '''
+        """
         [topic, message] = self.reader.recv_multipart()
         j = json.loads(message)
         output_iu = self.create_iu()
-        if 'image' in j:
-            '''
-            convert image types to an imagearray as part of the payload
-            '''
-            payload = {}
-            payload['image'] = Image.fromarray(np.array(j['image'], dtype='uint8'))
-            payload['nframes'] = j['nframes']
-            payload['rate'] = j['rate']
-            output_iu.set_payload(payload)
-        else:
-            output_iu.set_payload(j)
-        
-        update_message = UpdateMessage()
+
+        # TODO: If we want to have the conversation of images from the payload we would
+        #       need to add numpy and PIL as dependencies in the setup.py
+
+        # if "image" in j:
+        #     """
+        #     convert image types to an imagearray as part of the payload
+        #     """
+        #     payload = {}
+        #     payload["image"] = Image.fromarray(np.array(j["image"], dtype="uint8"))
+        #     payload["nframes"] = j["nframes"]
+        #     payload["rate"] = j["rate"]
+        #     output_iu.set_payload(payload)
+        # else:
+        #     output_iu.set_payload(j)
+        output_iu.set_payload(j)
+
+        update_message = retico_core.UpdateMessage()
 
         if "update_type" not in j:
             print("Incoming IU has no update_type!")
         if j["update_type"] == "UpdateType.ADD":
-            update_message.add_iu(output_iu, abstract.UpdateType.ADD)
+            update_message.add_iu(output_iu, retico_core.UpdateType.ADD)
         elif j["update_type"] == "UpdateType.REVOKE":
-            update_message.add_iu(output_iu, abstract.UpdateType.REVOKE)
+            update_message.add_iu(output_iu, retico_core.UpdateType.REVOKE)
         elif j["update_type"] == "UpdateType.COMMIT":
-            update_message.add_iu(output_iu, abstract.UpdateType.COMMIT)
-        
-        return update_message
+            update_message.add_iu(output_iu, retico_core.UpdateType.COMMIT)
 
+        return update_message
 
     def prepare_run(self):
         self.reader = ReaderSingleton.getInstance().socket
@@ -123,8 +161,9 @@ class ZeroMQReader(abstract.AbstractProducingModule):
 
     def setup(self):
         pass
-        
-class ZeroMQWriter(abstract.AbstractModule):
+
+
+class ZeroMQWriter(retico_core.AbstractModule):
 
     """A ZeroMQ Writer Module
 
@@ -133,6 +172,7 @@ class ZeroMQWriter(abstract.AbstractModule):
     Attributes:
     topic (str): topic/scope that this writes to
     """
+
     @staticmethod
     def name():
         return "ZeroMQ Writer Module"
@@ -143,28 +183,27 @@ class ZeroMQWriter(abstract.AbstractModule):
 
     @staticmethod
     def output_iu():
-        return None 
+        return None
 
     @staticmethod
     def input_ius():
-        return [abstract.IncrementalUnit] 
+        return [retico_core.IncrementalUnit]
 
     def __init__(self, topic, **kwargs):
         """Initializes the ZeroMQReader.
 
         Args: topic(str): the topic/scope where the information will be read.
-            
+
         """
         super().__init__(**kwargs)
         self.topic = topic.encode()
-        self.queue = deque() # no maxlen
+        self.queue = deque()  # no maxlen
         self.writer = None
-        
 
     def process_update(self, update_message):
-        '''
+        """
         This assumes that the message is json formatted, then packages it as payload into an IU
-        '''
+        """
         for um in update_message:
             self.queue.append(um)
 
@@ -178,16 +217,18 @@ class ZeroMQWriter(abstract.AbstractModule):
                 continue
             input_iu, ut = self.queue.popleft()
             payload = {}
-            payload['originatingTime'] = datetime.datetime.now().isoformat()
-            
+            payload["originatingTime"] = datetime.datetime.now().isoformat()
+
             # print(input_iu.payload)
             # if isinstance(input_iu, ImageIU) or isinstance(input_iu, DetectedObjectsIU)  or isinstance(input_iu, ObjectFeaturesIU):
-                # payload['message'] = json.dumps(input_iu.get_json())
+            # payload['message'] = json.dumps(input_iu.get_json())
             # else:
-            payload['message'] = json.dumps(input_iu.payload)
-            payload['update_type'] = str(ut)
+            payload["message"] = json.dumps(input_iu.payload)
+            payload["update_type"] = str(ut)
 
-            self.writer.send_multipart([self.topic, json.dumps(payload).encode('utf-8')])
+            self.writer.send_multipart(
+                [self.topic, json.dumps(payload).encode("utf-8")]
+            )
 
     def setup(self):
         self.writer = WriterSingleton.getInstance().socket

@@ -13,13 +13,15 @@ try:
 except ImportError:
     from distutils.core import setup
 
+import retico_zmq
+
 config = {
     "description": "The ZeroMQ reader/writer incremental modules for the retico framework",
     "author": "Casey Kennington",
-    "url": "??",
-    "download_url": "??",
+    "url": "https://github.com/retico-team/retico-zmq",
+    "download_url": "https://github.com/retico-team/retico-zmq",
     "author_email": "caseykennington@boisestate.edu",
-    "version": "0.1",
+    "version": retico_zmq.__version__,
     "install_requires": ["retico-core~=0.2.0", "zmq"],
     "packages": find_packages(),
     "name": "retico-zmq",
