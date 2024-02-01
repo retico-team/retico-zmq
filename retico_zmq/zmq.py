@@ -85,7 +85,7 @@ class WriterSingleton:
 #         self.payload = payload
 
 
-class ZeroMQReader(retico_core.AbstractProducingModule):
+class ZeroMQReader(retico_core.AbstractModule):
 
     """A ZeroMQ Reader Module
 
@@ -120,55 +120,58 @@ class ZeroMQReader(retico_core.AbstractProducingModule):
         """
         This assumes that the message is json formatted, then packages it as payload into an IU
         """
+        return None
+    
+    def run_reader(self):
         # print(self.topic)
-        topic,message = self.reader.recv_string().split(zmq_delimiter)
+        while True:
+            time.sleep(0.5)
+            topic,message = self.reader.recv_string().split(zmq_delimiter)
+            # print(self.topic)
+            # I hate these two stupid hacks, but sometimes
+            # the recv_multipart function is missing the topic
+            # if len(data) != 2: return None
+            # print(type(data[0].decode()))
+            # if type(data[0].decode()) != str: return None
+            
+            # topic,message = data
+            # print(self.topic, topic, self.topic==topic)
+            if self.topic != topic: # only deal with IUs designated for this topic
+                return None
 
-        # I hate these two stupid hacks, but sometimes
-        # the recv_multipart function is missing the topic
-        # if len(data) != 2: return None
-        # print(type(data[0].decode()))
-        # if type(data[0].decode()) != str: return None
-        
-        # topic,message = data
-        # print(self.topic, topic, self.topic==topic)
-        if self.topic != topic: # only deal with IUs designated for this topic
-            return None
+            j = json.loads(message)
+                # print(self.topic, topic.decode())
+            
+            output_iu = self.target_iu_type(
+                        creator=self,
+                        iuid=f"{hash(self)}:{self.iu_counter}",
+                        previous_iu=self._previous_iu,
+                        grounded_in=None,
+                    )
+            self.iu_counter += 1
+            self._previous_iu = output_iu
+            
+            output_iu.from_zmq(j)
 
-        j = json.loads(message)
-            # print(self.topic, topic.decode())
-        
-        output_iu = self.target_iu_type(
-                    creator=self,
-                    iuid=f"{hash(self)}:{self.iu_counter}",
-                    previous_iu=self._previous_iu,
-                    grounded_in=None,
-                )
-        self.iu_counter += 1
-        self._previous_iu = output_iu
-        
-        output_iu.from_zmq(j)
+            update_message = retico_core.UpdateMessage()
 
-        update_message = retico_core.UpdateMessage()
-
-        if "update_type" not in j:
-            print("Incoming IU has no update_type!")
-        if j["update_type"] == "UpdateType.ADD":
-            update_message.add_iu(output_iu, retico_core.UpdateType.ADD)
-        elif j["update_type"] == "UpdateType.REVOKE":
-            update_message.add_iu(output_iu, retico_core.UpdateType.REVOKE)
-        elif j["update_type"] == "UpdateType.COMMIT":
-            update_message.add_iu(output_iu, retico_core.UpdateType.COMMIT)
-
-        return update_message
+            if "update_type" not in j:
+                print("Incoming IU has no update_type!")
+            if j["update_type"] == "UpdateType.ADD":
+                update_message.add_iu(output_iu, retico_core.UpdateType.ADD)
+            elif j["update_type"] == "UpdateType.REVOKE":
+                update_message.add_iu(output_iu, retico_core.UpdateType.REVOKE)
+            elif j["update_type"] == "UpdateType.COMMIT":
+                update_message.add_iu(output_iu, retico_core.UpdateType.COMMIT)
+            # print('iu created by ', self.topic)
+            self.append(update_message)
 
     def prepare_run(self):
         self.reader = ReaderSingleton.getInstance().socket
         # self.reader.setsockopt(zmq.SUBSCRIBE, self.topic)
         self.reader.subscribe(self.topic)
-
-    def setup(self):
-        pass
-
+        t = threading.Thread(target=self.run_reader)
+        t.start()
 
 
 class ZeroMQWriter(retico_core.AbstractModule):
@@ -212,30 +215,45 @@ class ZeroMQWriter(retico_core.AbstractModule):
         """
         This assumes that the message is json formatted, then packages it as payload into an IU
         """
-        for um in update_message:
-            self.queue.append(um)
+        for input_iu,um in update_message:
+            self.writer.send_string(
+                self.topic + zmq_delimiter + json.dumps(input_iu.to_zmq(um))
+            )
+            time.sleep(0.1)
 
         return None
+        # for um in update_message:
+        #     self.queue.append(um)
+        # for input_iu,um in update_message:
+        #     # print('sending', self.topic)
+        #     # print(input_iu.payload)
+        #     # if isinstance(input_iu, ImageIU) or isinstance(input_iu, DetectedObjectsIU)  or isinstance(input_iu, ObjectFeaturesIU):
+        #     #     payload['message'] = json.dumps(input_iu.get_json())
+        #     self.writer.send_string(
+        #        self.topic + zmq_delimiter + json.dumps(input_iu.to_zmq(um))
+        #     )
 
-    def run_writer(self):
+        # return None
 
-        while True:
-            if len(self.queue) == 0:
-                time.sleep(0.1)
-                continue
-            input_iu, ut = self.queue.popleft()
-            # print('sending', self.topic)
-            # print(input_iu.payload)
-            # if isinstance(input_iu, ImageIU) or isinstance(input_iu, DetectedObjectsIU)  or isinstance(input_iu, ObjectFeaturesIU):
-            #     payload['message'] = json.dumps(input_iu.get_json())
-            self.writer.send_string(
-               self.topic + zmq_delimiter + json.dumps(input_iu.to_zmq(ut))
-            )
+    # def run_writer(self):
 
-    def setup(self):
+    #     while True:
+    #         if len(self.queue) == 0:
+    #             time.sleep(0.5)
+    #             continue
+    #         input_iu, ut = self.queue.popleft()
+    #         # print('sending', self.topic)
+    #         # print(input_iu.payload)
+    #         # if isinstance(input_iu, ImageIU) or isinstance(input_iu, DetectedObjectsIU)  or isinstance(input_iu, ObjectFeaturesIU):
+    #         #     payload['message'] = json.dumps(input_iu.get_json())
+    #         self.writer.send_string(
+    #            self.topic + zmq_delimiter + json.dumps(input_iu.to_zmq(ut))
+    #         )
+
+    def prepare_run(self):
         self.writer = WriterSingleton.getInstance().socket
-        t = threading.Thread(target=self.run_writer)
-        t.start()
+        # t = threading.Thread(target=self.run_writer)
+        # t.start()
 
 
 # class ZMQtoImage(retico_core.AbstractModule):
