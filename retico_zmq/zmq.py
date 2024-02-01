@@ -18,6 +18,8 @@ import datetime
 import time
 from collections import deque
 
+zmq_delimiter = '_!_'
+
 class ReaderSingleton:
     __instance = None
 
@@ -51,36 +53,36 @@ class WriterSingleton:
             WriterSingleton.__instance = self
 
 
-class ZeroMQIU(retico_core.IncrementalUnit):
-    @staticmethod
-    def type():
-        return "ZeroMQ Incremental Unit"
+# class ZeroMQIU(retico_core.IncrementalUnit):
+#     @staticmethod
+#     def type():
+#         return "ZeroMQ Incremental Unit"
 
-    def __init__(
-        self,
-        creator=None,
-        iuid=0,
-        previous_iu=None,
-        grounded_in=None,
-        payload=None,
-        **kwargs
-    ):
-        """Initialize the DialogueActIU with act and concepts.
+#     def __init__(
+#         self,
+#         creator=None,
+#         iuid=0,
+#         previous_iu=None,
+#         grounded_in=None,
+#         payload=None,
+#         **kwargs
+#     ):
+#         """Initialize the DialogueActIU with act and concepts.
 
-        Args:
-            act (string): A representation of the act.
-            concepts (dict): A representation of the concepts as a dictionary.
-        """
-        super().__init__(
-            creator=creator,
-            iuid=iuid,
-            previous_iu=previous_iu,
-            grounded_in=grounded_in,
-            payload=payload,
-        )
+#         Args:
+#             act (string): A representation of the act.
+#             concepts (dict): A representation of the concepts as a dictionary.
+#         """
+#         super().__init__(
+#             creator=creator,
+#             iuid=iuid,
+#             previous_iu=previous_iu,
+#             grounded_in=grounded_in,
+#             payload=payload,
+#         )
 
-    def set_payload(self, payload):
-        self.payload = payload
+#     def set_payload(self, payload):
+#         self.payload = payload
 
 
 class ZeroMQReader(retico_core.AbstractProducingModule):
@@ -118,7 +120,22 @@ class ZeroMQReader(retico_core.AbstractProducingModule):
         """
         This assumes that the message is json formatted, then packages it as payload into an IU
         """
-        [topic, message] = self.reader.recv_multipart()
+        # print(self.topic)
+        topic,message = self.reader.recv_string().split(zmq_delimiter)
+
+        # I hate these two stupid hacks, but sometimes
+        # the recv_multipart function is missing the topic
+        # if len(data) != 2: return None
+        # print(type(data[0].decode()))
+        # if type(data[0].decode()) != str: return None
+        
+        # topic,message = data
+        # print(self.topic, topic, self.topic==topic)
+        if self.topic != topic: # only deal with IUs designated for this topic
+            return None
+
+        j = json.loads(message)
+            # print(self.topic, topic.decode())
         
         output_iu = self.target_iu_type(
                     creator=self,
@@ -128,7 +145,7 @@ class ZeroMQReader(retico_core.AbstractProducingModule):
                 )
         self.iu_counter += 1
         self._previous_iu = output_iu
-        j = json.loads(message)
+        
         output_iu.from_zmq(j)
 
         update_message = retico_core.UpdateMessage()
@@ -146,7 +163,8 @@ class ZeroMQReader(retico_core.AbstractProducingModule):
 
     def prepare_run(self):
         self.reader = ReaderSingleton.getInstance().socket
-        self.reader.setsockopt(zmq.SUBSCRIBE, self.topic.encode())
+        # self.reader.setsockopt(zmq.SUBSCRIBE, self.topic)
+        self.reader.subscribe(self.topic)
 
     def setup(self):
         pass
@@ -186,7 +204,7 @@ class ZeroMQWriter(retico_core.AbstractModule):
 
         """
         super().__init__(**kwargs)
-        self.topic = topic.encode()
+        self.topic = topic
         self.queue = deque()  # no maxlen
         self.writer = None
 
@@ -206,12 +224,12 @@ class ZeroMQWriter(retico_core.AbstractModule):
                 time.sleep(0.1)
                 continue
             input_iu, ut = self.queue.popleft()
-
+            # print('sending', self.topic)
             # print(input_iu.payload)
             # if isinstance(input_iu, ImageIU) or isinstance(input_iu, DetectedObjectsIU)  or isinstance(input_iu, ObjectFeaturesIU):
             #     payload['message'] = json.dumps(input_iu.get_json())
-            self.writer.send_multipart(
-                [self.topic, json.dumps(input_iu.to_zmq(ut)).encode("utf-8")]
+            self.writer.send_string(
+               self.topic + zmq_delimiter + json.dumps(input_iu.to_zmq(ut))
             )
 
     def setup(self):
