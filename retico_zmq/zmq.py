@@ -48,9 +48,24 @@ class WriterSingleton:
         """Virtually private constructor."""
         if WriterSingleton.__instance == None:
             context = zmq.Context()
+            self.queue = deque()
             self.socket = context.socket(zmq.PUB)
             self.socket.bind("tcp://{}:{}".format(ip, port))
             WriterSingleton.__instance = self
+            t = threading.Thread(target=self.run_writer)
+            t.start()
+    
+    def send(self, data):
+        self.queue.append(data)
+
+    def run_writer(self):
+        while True:
+            if len(self.queue) == 0:
+                time.sleep(0.1) 
+                continue
+            data = self.queue.popleft()
+            self.socket.send_string(data)
+
 
 
 # class ZeroMQIU(retico_core.IncrementalUnit):
@@ -114,18 +129,53 @@ class ZeroMQReader(retico_core.AbstractModule):
         super().__init__(**kwargs)
         self.topic = topic
         self.reader = None
+        self.queue = deque()
         self.target_iu_type = target_iu_type
 
     def process_update(self, input_iu):
         """
         This assumes that the message is json formatted, then packages it as payload into an IU
         """
+
         return None
+
+    def run_process(self):
+
+        while True:
+            time.sleep(0.2)
+            if len(self.queue) > 0:
+                print("ZMQ Reader process update", self.topic)
+                message = self.queue.popleft()
+                j = json.loads(message)
+                    # print(self.topic, topic.decode())
+                
+                output_iu = self.target_iu_type(
+                            creator=self,
+                            iuid=f"{hash(self)}:{self.iu_counter}",
+                            previous_iu=self._previous_iu,
+                            grounded_in=None,
+                        )
+                self.iu_counter += 1
+                self._previous_iu = output_iu
+                
+                output_iu.from_zmq(j)
+
+                update_message = retico_core.UpdateMessage()
+
+                if "update_type" not in j:
+                    print("Incoming IU has no update_type!")
+                if j["update_type"] == "UpdateType.ADD":
+                    update_message.add_iu(output_iu, retico_core.UpdateType.ADD)
+                elif j["update_type"] == "UpdateType.REVOKE":
+                    update_message.add_iu(output_iu, retico_core.UpdateType.REVOKE)
+                elif j["update_type"] == "UpdateType.COMMIT":
+                    update_message.add_iu(output_iu, retico_core.UpdateType.COMMIT)
+                # print('iu created by ', self.topic)
+                self.append(update_message)        
     
     def run_reader(self):
         # print(self.topic)
         while True:
-            time.sleep(0.5)
             topic,message = self.reader.recv_string().split(zmq_delimiter)
             # print(self.topic)
             # I hate these two stupid hacks, but sometimes
@@ -137,34 +187,11 @@ class ZeroMQReader(retico_core.AbstractModule):
             # topic,message = data
             # print(self.topic, topic, self.topic==topic)
             if self.topic != topic: # only deal with IUs designated for this topic
-                return None
+                continue
 
-            j = json.loads(message)
-                # print(self.topic, topic.decode())
+            self.queue.append(message)
+
             
-            output_iu = self.target_iu_type(
-                        creator=self,
-                        iuid=f"{hash(self)}:{self.iu_counter}",
-                        previous_iu=self._previous_iu,
-                        grounded_in=None,
-                    )
-            self.iu_counter += 1
-            self._previous_iu = output_iu
-            
-            output_iu.from_zmq(j)
-
-            update_message = retico_core.UpdateMessage()
-
-            if "update_type" not in j:
-                print("Incoming IU has no update_type!")
-            if j["update_type"] == "UpdateType.ADD":
-                update_message.add_iu(output_iu, retico_core.UpdateType.ADD)
-            elif j["update_type"] == "UpdateType.REVOKE":
-                update_message.add_iu(output_iu, retico_core.UpdateType.REVOKE)
-            elif j["update_type"] == "UpdateType.COMMIT":
-                update_message.add_iu(output_iu, retico_core.UpdateType.COMMIT)
-            # print('iu created by ', self.topic)
-            self.append(update_message)
 
     def prepare_run(self):
         self.reader = ReaderSingleton.getInstance().socket
@@ -172,6 +199,8 @@ class ZeroMQReader(retico_core.AbstractModule):
         self.reader.subscribe(self.topic)
         t = threading.Thread(target=self.run_reader)
         t.start()
+        t = threading.Thread(target=self.run_process)
+        t.start()        
 
 
 class ZeroMQWriter(retico_core.AbstractModule):
@@ -209,17 +238,18 @@ class ZeroMQWriter(retico_core.AbstractModule):
         super().__init__(**kwargs)
         self.topic = topic
         self.queue = deque()  # no maxlen
-        self.writer = None
+        self.writer = WriterSingleton.getInstance()
 
     def process_update(self, update_message):
         """
         This assumes that the message is json formatted, then packages it as payload into an IU
         """
+        print("ZMQ Writer process update", self.topic)        
         for input_iu,um in update_message:
-            self.writer.send_string(
+            self.writer.send(
                 self.topic + zmq_delimiter + json.dumps(input_iu.to_zmq(um))
             )
-            time.sleep(0.1)
+            # time.sleep(0.1)
 
         return None
         # for um in update_message:
@@ -251,7 +281,8 @@ class ZeroMQWriter(retico_core.AbstractModule):
     #         )
 
     def prepare_run(self):
-        self.writer = WriterSingleton.getInstance().socket
+        pass
+        # self.writer = WriterSingleton.getInstance().socket
         # t = threading.Thread(target=self.run_writer)
         # t.start()
 
