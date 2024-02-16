@@ -20,21 +20,96 @@ from collections import deque
 
 zmq_delimiter = '_!_'
 
-class ReaderSingleton:
-    __instance = None
+class ReaderSingleton(retico_core.AbstractModule):
+
+    """A ZeroMQ Reader Module
+
+    Attributes:
+
+    """
 
     @staticmethod
-    def getInstance():
-        """Static access method."""
-        return ReaderSingleton.__instance
+    def name():
+        return "ZeroMQ Reader Module"
 
-    def __init__(self, ip, port):
-        """Virtually private constructor."""
-        if ReaderSingleton.__instance == None:
-            self.socket = zmq.Context().socket(zmq.SUB)
-            self.socket.connect("tcp://{}:{}".format(ip, port))
-            ReaderSingleton.__instance = self
+    @staticmethod
+    def description():
+        return "A Module providing reading from a ZeroMQ bus"
 
+    @staticmethod
+    def output_iu():
+        return IncrementalUnit
+
+    def __init__(self, ip, port, **kwargs):
+        """Initializes the ZeroMQReader.
+
+        Args: topic(str): the topic/scope where the information will be read.
+
+        """
+        super().__init__(**kwargs)
+        self.queue = deque()
+        self.target_iu_types = {}
+        self.socket = zmq.Context().socket(zmq.SUB)
+        self.socket.connect("tcp://{}:{}".format(ip, port))    
+
+    def process_update(self, input_iu):
+        """
+        This assumes that the message is json formatted, then packages it as payload into an IU
+        """
+        return None
+
+    def add(self, topic, target_iu_type):
+        self.socket.subscribe(topic)
+        self.target_iu_types[topic] = target_iu_type
+
+    def run_process(self):
+
+        while True:
+            time.sleep(0.2)
+            if len(self.queue) > 0:
+                print("ZMQ Reader process update")
+                topic,message = self.queue.popleft()
+                if topic not in self.target_iu_types:
+                    print(topic, "is not a recognized topic")
+                    continue
+                j = json.loads(message)
+                    # print(self.topic, topic.decode())
+                
+                output_iu = self.target_iu_types[topic](
+                            creator=self,
+                            iuid=f"{hash(self)}:{self.iu_counter}",
+                            previous_iu=self._previous_iu,
+                            grounded_in=None,
+                        )
+                self.iu_counter += 1
+                self._previous_iu = output_iu
+                
+                output_iu.from_zmq(j)
+
+                update_message = retico_core.UpdateMessage()
+
+                if "update_type" not in j:
+                    print("Incoming IU has no update_type!")
+                if j["update_type"] == "UpdateType.ADD":
+                    update_message.add_iu(output_iu, retico_core.UpdateType.ADD)
+                elif j["update_type"] == "UpdateType.REVOKE":
+                    update_message.add_iu(output_iu, retico_core.UpdateType.REVOKE)
+                elif j["update_type"] == "UpdateType.COMMIT":
+                    update_message.add_iu(output_iu, retico_core.UpdateType.COMMIT)
+                # print('iu created by ', self.topic)
+                self.append(update_message)        
+    
+    def run_reader(self):
+        # print(self.topic)
+        while True:
+            topic,message = self.socket.recv_string().split(zmq_delimiter)
+            self.queue.append((topic,message))
+
+    def prepare_run(self):
+        t = threading.Thread(target=self.run_reader)
+        t.start()
+        t = threading.Thread(target=self.run_process)
+        t.start()                
 
 class WriterSingleton:
     __instance = None
@@ -100,107 +175,107 @@ class WriterSingleton:
 #         self.payload = payload
 
 
-class ZeroMQReader(retico_core.AbstractModule):
+# class ZeroMQReader(retico_core.AbstractModule):
 
-    """A ZeroMQ Reader Module
+#     """A ZeroMQ Reader Module
 
-    Attributes:
+#     Attributes:
 
-    """
+#     """
 
-    @staticmethod
-    def name():
-        return "ZeroMQ Reader Module"
+#     @staticmethod
+#     def name():
+#         return "ZeroMQ Reader Module"
 
-    @staticmethod
-    def description():
-        return "A Module providing reading from a ZeroMQ bus"
+#     @staticmethod
+#     def description():
+#         return "A Module providing reading from a ZeroMQ bus"
 
-    @staticmethod
-    def output_iu():
-        return IncrementalUnit
+#     @staticmethod
+#     def output_iu():
+#         return IncrementalUnit
 
-    def __init__(self, topic, target_iu_type, **kwargs):
-        """Initializes the ZeroMQReader.
+#     def __init__(self, topic, target_iu_type, **kwargs):
+#         """Initializes the ZeroMQReader.
 
-        Args: topic(str): the topic/scope where the information will be read.
+#         Args: topic(str): the topic/scope where the information will be read.
 
-        """
-        super().__init__(**kwargs)
-        self.topic = topic
-        self.reader = None
-        self.queue = deque()
-        self.target_iu_type = target_iu_type
+#         """
+#         super().__init__(**kwargs)
+#         self.topic = topic
+#         self.reader = None
+#         self.queue = deque()
+#         self.target_iu_type = target_iu_type
 
-    def process_update(self, input_iu):
-        """
-        This assumes that the message is json formatted, then packages it as payload into an IU
-        """
+#     def process_update(self, input_iu):
+#         """
+#         This assumes that the message is json formatted, then packages it as payload into an IU
+#         """
 
-        return None
+#         return None
 
-    def run_process(self):
+#     def run_process(self):
 
-        while True:
-            time.sleep(0.2)
-            if len(self.queue) > 0:
-                print("ZMQ Reader process update", self.topic)
-                message = self.queue.popleft()
-                j = json.loads(message)
-                    # print(self.topic, topic.decode())
+#         while True:
+#             time.sleep(0.2)
+#             if len(self.queue) > 0:
+#                 print("ZMQ Reader process update", self.topic)
+#                 message = self.queue.popleft()
+#                 j = json.loads(message)
+#                     # print(self.topic, topic.decode())
                 
-                output_iu = self.target_iu_type(
-                            creator=self,
-                            iuid=f"{hash(self)}:{self.iu_counter}",
-                            previous_iu=self._previous_iu,
-                            grounded_in=None,
-                        )
-                self.iu_counter += 1
-                self._previous_iu = output_iu
+#                 output_iu = self.target_iu_type(
+#                             creator=self,
+#                             iuid=f"{hash(self)}:{self.iu_counter}",
+#                             previous_iu=self._previous_iu,
+#                             grounded_in=None,
+#                         )
+#                 self.iu_counter += 1
+#                 self._previous_iu = output_iu
                 
-                output_iu.from_zmq(j)
+#                 output_iu.from_zmq(j)
 
-                update_message = retico_core.UpdateMessage()
+#                 update_message = retico_core.UpdateMessage()
 
-                if "update_type" not in j:
-                    print("Incoming IU has no update_type!")
-                if j["update_type"] == "UpdateType.ADD":
-                    update_message.add_iu(output_iu, retico_core.UpdateType.ADD)
-                elif j["update_type"] == "UpdateType.REVOKE":
-                    update_message.add_iu(output_iu, retico_core.UpdateType.REVOKE)
-                elif j["update_type"] == "UpdateType.COMMIT":
-                    update_message.add_iu(output_iu, retico_core.UpdateType.COMMIT)
-                # print('iu created by ', self.topic)
-                self.append(update_message)        
+#                 if "update_type" not in j:
+#                     print("Incoming IU has no update_type!")
+#                 if j["update_type"] == "UpdateType.ADD":
+#                     update_message.add_iu(output_iu, retico_core.UpdateType.ADD)
+#                 elif j["update_type"] == "UpdateType.REVOKE":
+#                     update_message.add_iu(output_iu, retico_core.UpdateType.REVOKE)
+#                 elif j["update_type"] == "UpdateType.COMMIT":
+#                     update_message.add_iu(output_iu, retico_core.UpdateType.COMMIT)
+#                 # print('iu created by ', self.topic)
+#                 self.append(update_message)        
     
-    def run_reader(self):
-        # print(self.topic)
-        while True:
-            topic,message = self.reader.recv_string().split(zmq_delimiter)
-            # print(self.topic)
-            # I hate these two stupid hacks, but sometimes
-            # the recv_multipart function is missing the topic
-            # if len(data) != 2: return None
-            # print(type(data[0].decode()))
-            # if type(data[0].decode()) != str: return None
+#     def run_reader(self):
+#         # print(self.topic)
+#         while True:
+#             topic,message = self.reader.recv_string().split(zmq_delimiter)
+#             # print(self.topic)
+#             # I hate these two stupid hacks, but sometimes
+#             # the recv_multipart function is missing the topic
+#             # if len(data) != 2: return None
+#             # print(type(data[0].decode()))
+#             # if type(data[0].decode()) != str: return None
             
-            # topic,message = data
-            # print(self.topic, topic, self.topic==topic)
-            if self.topic != topic: # only deal with IUs designated for this topic
-                continue
+#             # topic,message = data
+#             # print(self.topic, topic, self.topic==topic)
+#             if self.topic != topic: # only deal with IUs designated for this topic
+#                 continue
 
-            self.queue.append(message)
+#             self.queue.append(message)
 
             
 
-    def prepare_run(self):
-        self.reader = ReaderSingleton.getInstance().socket
-        # self.reader.setsockopt(zmq.SUBSCRIBE, self.topic)
-        self.reader.subscribe(self.topic)
-        t = threading.Thread(target=self.run_reader)
-        t.start()
-        t = threading.Thread(target=self.run_process)
-        t.start()        
+#     def prepare_run(self):
+#         self.reader = ReaderSingleton.getInstance().socket
+#         # self.reader.setsockopt(zmq.SUBSCRIBE, self.topic)
+#         self.reader.subscribe(self.topic)
+#         t = threading.Thread(target=self.run_reader)
+#         t.start()
+#         t = threading.Thread(target=self.run_process)
+#         t.start()        
 
 
 class ZeroMQWriter(retico_core.AbstractModule):
