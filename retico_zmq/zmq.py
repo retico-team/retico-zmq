@@ -67,7 +67,7 @@ class ReaderSingleton(retico_core.AbstractModule):
         while True:
             time.sleep(0.2)
             if len(self.queue) > 0:
-                print("ZMQ Reader process update")
+                # print("ZMQ Reader process update")
                 topic,message = self.queue.popleft()
                 if topic not in self.target_iu_types:
                     print(topic, "is not a recognized topic")
@@ -319,7 +319,7 @@ class ZeroMQWriter(retico_core.AbstractModule):
         """
         This assumes that the message is json formatted, then packages it as payload into an IU
         """
-        print("ZMQ Writer process update", self.topic)        
+        # print("ZMQ Writer process update", self.topic)        
         for input_iu,um in update_message:
             self.writer.send(
                 self.topic + zmq_delimiter + json.dumps(input_iu.to_zmq(um))
