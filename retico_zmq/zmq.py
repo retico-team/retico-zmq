@@ -37,6 +37,10 @@ class ReaderSingleton(retico_core.AbstractModule):
         return "A Module providing reading from a ZeroMQ bus"
 
     @staticmethod
+    def input_ius():
+        return []
+
+    @staticmethod
     def output_iu():
         return IncrementalUnit
 
