@@ -78,7 +78,7 @@ class ReaderSingleton(retico_core.AbstractModule):
                     continue
                 j = json.loads(message)
                     # print(self.topic, topic.decode())
-                
+
                 output_iu = self.target_iu_types[topic](
                             creator=self,
                             iuid=f"{hash(self)}:{self.iu_counter}",
@@ -87,7 +87,7 @@ class ReaderSingleton(retico_core.AbstractModule):
                         )
                 self.iu_counter += 1
                 self._previous_iu = output_iu
-                
+
                 output_iu.from_zmq(j)
 
                 update_message = retico_core.UpdateMessage()
@@ -101,8 +101,8 @@ class ReaderSingleton(retico_core.AbstractModule):
                 elif j["update_type"] == "UpdateType.COMMIT":
                     update_message.add_iu(output_iu, retico_core.UpdateType.COMMIT)
                 # print('iu created by ', self.topic)
-                self.append(update_message)        
-    
+                self.append(update_message)
+
     def run_reader(self):
         # print(self.topic)
         while True:
@@ -113,7 +113,8 @@ class ReaderSingleton(retico_core.AbstractModule):
         t = threading.Thread(target=self.run_reader)
         t.start()
         t = threading.Thread(target=self.run_process)
-        t.start()                
+        t.start()
+
 
 class WriterSingleton:
     __instance = None
@@ -125,26 +126,26 @@ class WriterSingleton:
 
     def __init__(self, ip, port):
         """Virtually private constructor."""
-        if WriterSingleton.__instance == None:
+        if WriterSingleton.__instance is None:
             context = zmq.Context()
             self.queue = deque()
             self.socket = context.socket(zmq.PUB)
             self.socket.bind("tcp://{}:{}".format(ip, port))
             WriterSingleton.__instance = self
             t = threading.Thread(target=self.run_writer)
+            t.daemon = True
             t.start()
-    
+
     def send(self, data):
         self.queue.append(data)
 
     def run_writer(self):
         while True:
             if len(self.queue) == 0:
-                time.sleep(0.1) 
+                time.sleep(0.1)
                 continue
             data = self.queue.popleft()
             self.socket.send_string(data)
-
 
 
 # class ZeroMQIU(retico_core.IncrementalUnit):
