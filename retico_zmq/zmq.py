@@ -110,9 +110,9 @@ class ReaderSingleton(retico_core.AbstractModule):
             self.queue.append((topic,message))
 
     def prepare_run(self):
-        t = threading.Thread(target=self.run_reader)
+        t = threading.Thread(target=self.run_reader, daemon=True)
         t.start()
-        t = threading.Thread(target=self.run_process)
+        t = threading.Thread(target=self.run_process, daemon=True)
         t.start()
 
 
