@@ -127,7 +127,7 @@ class ZMQReaderModule(retico_core.AbstractModule):
     """
 
     def name(self):
-        return f"[ZMQ] {str(self.expected_iu_type)}"
+        return f"ZMQ Reader Module"
 
     @staticmethod
     def description():
@@ -135,12 +135,15 @@ class ZMQReaderModule(retico_core.AbstractModule):
 
     @staticmethod
     def input_ius():
+        # Input IUs are not relevant here because we receive IUs from ZMQ message queue not from the output of a module
         return []
-
+    
+    @staticmethod
     def output_iu(self):
-        return self.expected_iu_type
+        # output IU does not have any impact because this module does not create any IUs, just passes existing ones on.
+        pass
 
-    def __init__(self, ip, port, topic, expected_iu_type, **kwargs):
+    def __init__(self, ip, port, topic, **kwargs):
         """Initializes the ZeroMQReader.
 
         Args: topic(str): the topic/scope where the information will be read.
@@ -153,7 +156,6 @@ class ZMQReaderModule(retico_core.AbstractModule):
         self.socket.connect("tcp://{}:{}".format(ip, port))
         self.topic = topic
         self.socket.subscribe(topic)
-        self.expected_iu_type = expected_iu_type
 
     def process_update(self, input_iu):
         """
