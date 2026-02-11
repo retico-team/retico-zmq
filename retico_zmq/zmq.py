@@ -229,9 +229,11 @@ class WriterSingleton:
             data = self.queue.popleft()
             if len(data) == 3:
                 topic, message, update_type = data
-                # Keep 4 (0 indexed) layers of 'grounded_in', 'previous_iu', and 'creator' delete the rest to reduce the
+                # Keep `max_nested_iu_depth` (0 indexed) layers of 'grounded_in', 'previous_iu', and 'creator' delete the rest to reduce the
                 # size of messages we are sending over ZMQ
-                delete_nested_attributes(obj=message, target_attrs=['grounded_in', 'previous_iu'], target_deletion_depth=self.max_nested_iu_depth)
+                # NOTE: This does break IU chain of information
+                if self.max_nested_iu_depth != -1: # Set max_nested_iu_depth to -1 if you do not want any data deleted before serializing 
+                    delete_nested_attributes(obj=message, target_attrs=['grounded_in', 'previous_iu'], target_deletion_depth=self.max_nested_iu_depth)
                 self.socket.send_multipart([topic.encode(), pickle.dumps((message, update_type))])
             else:
                 self.socket.send_string(data)
