@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=80", "setuptools-scm[simple]>=8"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "retico-zmq"
+dynamic = ["version"]
+dependencies = [
+    "retico-core>=2.0.0",
+    "zmq"
+]
+authors = [
+    {name = "Casey Kennington", email = "caseykennington@boisestate.edu"},
+]
+description = "The ZeroMQ reader/writer incremental modules for the retico framework"
+readme = "README.md"
+license = { file = "LICENSE" }
+keywords = ["retico", "framework", "incremental", "dialogue", "zmq"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
+]
+
