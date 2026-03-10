@@ -174,6 +174,7 @@ class ZMQReaderModule(retico_core.AbstractModule):
             if len(self.queue) > 0:
                 message = self.queue.popleft()
                 input_iu, update_type = pickle.loads(message)
+                input_iu.meta_data['zmq_creator'] = self
                 um = retico_core.UpdateMessage.from_iu(input_iu, update_type) # pass input IU on using its own update type
                 self.append(um)
 
